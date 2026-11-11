@@ -14,7 +14,8 @@ max_grad_norm: 1.0
 delta: 0.000001
 precision: bf16
 dirichlet_alpha: 0.1
-physical_batch_size: 1
+physical_batch_size: 8
+generation_batch_size: 16
 data_root: data
 cache_root: .cache/fdit
 results_root: results
@@ -37,3 +38,29 @@ conditions:
   - {partition: non_iid, dp: false, id: skew_nodp}
   - {partition: non_iid, dp: true, epsilon: 8.0, id: skew_eps8}
   - {partition: non_iid, dp: true, epsilon: 3.0, id: skew_eps3}
+
+# Default launcher runs this non-private diagnostic, NOT the factorial suite.
+diagnostic:
+  output_root: diagnostics
+  federated_results: results
+  federated_conditions: [iid_nodp, iid_eps8, iid_eps3, skew_nodp, skew_eps8, skew_eps3]
+  max_steps: 1000
+  milestones: [500, 1000]
+  checkpoint_interval: 100
+  grid_interval: 100
+  log_interval: 10
+  batch_size: 32
+  physical_batch_size: 8
+  learning_rate: 0.0001
+  precision: bf16
+  eval_samples: 512
+  generation_batch_size: 16
+  sampling_steps: 25
+  validation_samples: 96
+  vae_reconstruction_samples: 64
+  vae_min_psnr_db: 20.0
+  probe_steps: 2
+  aggregation_local_steps: 2
+  preview_samples: 16
+  min_relative_fid_improvement: 0.05
+  min_relative_validation_improvement: 0.02

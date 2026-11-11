@@ -1,4 +1,5 @@
 from pathlib import Path
+import csv
 
 import matplotlib
 matplotlib.use("Agg")
@@ -39,4 +40,30 @@ def quality_plots(rows, root):
     ax.set(ylabel="Diagnostic FID", title="IID versus label skew; missing cells omitted")
     fig.tight_layout()
     fig.savefig(root / "iid_vs_non_iid.png")
+    plt.close(fig)
+
+
+def diagnostic_curves(folder, manifest):
+    """Non-private central loss and fixed public-validation/fidelity trajectories."""
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    history = folder / "central/training_history.csv"
+    if history.exists():
+        with history.open(newline="", encoding="utf-8") as stream:
+            rows = list(csv.DictReader(stream))
+        if rows:
+            axes[0].plot([int(r["step"]) for r in rows], [float(r["nonprivate_train_mean_loss"]) for r in rows], alpha=.4)
+    points = sorted((int(s), e) for s, e in manifest.get("central_checkpoints", {}).items())
+    baseline = manifest.get("comparisons", {}).get("pretrained", {}).get("metrics")
+    val = ([(0, baseline["public_validation_denoising_loss"])] if baseline else [])
+    val += [(s, e["public_validation_loss"]) for s, e in points if "public_validation_loss" in e]
+    quality = ([(0, baseline["fid"])] if baseline else [])
+    quality += [(s, e["metrics"]["fid"]) for s, e in points if "metrics" in e]
+    if val:
+        axes[1].plot(*zip(*val), "o-")
+    if quality:
+        axes[2].plot(*zip(*quality), "o-")
+    for ax, title in zip(axes, ("Non-private training mean MSE", "Fixed public-validation MSE", "Diagnostic FID (0 = pretrained)")):
+        ax.set(title=title, xlabel="Central optimizer step")
+    fig.tight_layout()
+    fig.savefig(folder / "loss_and_fidelity_curves.png")
     plt.close(fig)

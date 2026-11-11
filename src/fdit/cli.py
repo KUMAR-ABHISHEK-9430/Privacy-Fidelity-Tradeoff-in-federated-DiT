@@ -148,12 +148,21 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["run"])
+    parser.add_argument("command", choices=["run", "diagnose"])
     parser.add_argument("--config", default="configs/experiment.yaml")
     parser.add_argument("--preset", default="fast", choices=["fast", "full"])
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--smoke", action="store_true")
-    run(parser.parse_args())
+    parser.add_argument("--steps", type=int, default=1000, help="Centralized diagnostic stopping step; 500 or 1000 for initial tests")
+    parser.add_argument("--federated-results", help="Read-only original results directory for diagnostic adapter comparisons")
+    args = parser.parse_args()
+    if args.command == "diagnose":
+        if args.smoke:
+            parser.error("Use run --smoke for isolated pretrained preflight")
+        from .diagnostics import run as diagnose
+        diagnose(args)
+    else:
+        run(args)
 
 
 if __name__ == "__main__":
