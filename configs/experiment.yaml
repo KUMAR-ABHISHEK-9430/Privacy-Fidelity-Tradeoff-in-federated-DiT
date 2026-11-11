@@ -1,0 +1,39 @@
+model_id: facebook/DiT-XL-2-256
+model_revision: main
+dataset: eurosat_rgb
+num_clients: 3
+seed: 42
+partition_seed: 43
+noise_seed: 44
+sampler_seed: 45
+evaluation_seed: 46
+lora_rank: 4
+lora_alpha: 4
+learning_rate: 0.0001
+max_grad_norm: 1.0
+delta: 0.000001
+precision: bf16
+dirichlet_alpha: 0.1
+physical_batch_size: 1
+data_root: data
+cache_root: .cache/fdit
+results_root: results
+fast:
+  rounds: 6
+  local_steps_per_round: 8
+  expected_logical_batch_size: 16
+  eval_samples_per_condition: 96
+  sampling_steps: 15
+full:
+  rounds: 12
+  local_steps_per_round: 15
+  expected_logical_batch_size: 32
+  eval_samples_per_condition: 512
+  sampling_steps: 25
+conditions:
+  - {partition: iid, dp: false, id: iid_nodp}
+  - {partition: iid, dp: true, epsilon: 8.0, id: iid_eps8}
+  - {partition: iid, dp: true, epsilon: 3.0, id: iid_eps3}
+  - {partition: non_iid, dp: false, id: skew_nodp}
+  - {partition: non_iid, dp: true, epsilon: 8.0, id: skew_eps8}
+  - {partition: non_iid, dp: true, epsilon: 3.0, id: skew_eps3}
