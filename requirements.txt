@@ -1,5 +1,7 @@
 # Torch/torchvision MUST be supplied by the CUDA environment. Never install a CPU replacement.
-numpy==1.26.4
+# Keep the validated older-Python path; NumPy 1.26 has no Python 3.13 wheels.
+numpy==1.26.4; python_version < "3.13"
+numpy==2.2.6; python_version >= "3.13"
 diffusers==0.35.1
 peft==0.17.1
 transformers==4.56.2
@@ -12,5 +14,5 @@ torch-fidelity==0.3.0
 scipy==1.15.3
 matplotlib==3.10.6
 Pillow==11.3.0
-PyYAML==6.0.2
+PyYAML==6.0.3
 pytest==8.4.2
