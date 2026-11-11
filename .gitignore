@@ -15,3 +15,12 @@ results_bundle.tar.gz
 !.env.example
 *token*
 *.log
+# Keep project notes and local machine/credential files out of public source.
+*.md
+.aws/
+.codex/
+.agents/
+*.pem
+*.key
+.DS_Store
+Thumbs.db
