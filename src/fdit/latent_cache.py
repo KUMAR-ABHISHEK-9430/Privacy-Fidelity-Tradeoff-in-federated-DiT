@@ -22,6 +22,7 @@ def build_cache(dataset, indices, vae, metadata, root, split_hash, guard=lambda:
         guard()
         path = root / f"{start:06d}.npy"
         count = min(shard_size, len(indices) - start)
+        print(f"[cache] Checking/building training latents {start + 1}-{start + count}/{len(indices)}", flush=True)
         if path.exists():
             arr = np.load(path, mmap_mode="r")
             if arr.shape != (count, 4, 32, 32) or arr.dtype != np.float32:
@@ -41,6 +42,7 @@ def build_cache(dataset, indices, vae, metadata, root, split_hash, guard=lambda:
         slab.flush()
         del slab
         os.replace(tmp, path)
+        print(f"[cache] Saved {start + count}/{len(indices)} training latents", flush=True)
     atomic_json(root / "manifest.json", {"fingerprint": key, "identity": identity})
     return LatentCache(root, indices, shard_size), key
 

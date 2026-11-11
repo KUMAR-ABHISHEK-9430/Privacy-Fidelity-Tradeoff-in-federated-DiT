@@ -33,6 +33,7 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
     if any(q > 1 for q in rates):
         raise ValueError("Logical expected batch exceeds client size")
     total_steps = config["rounds"] * config["local_steps_per_round"]
+    print(f"[{condition['id']}] Preparing {'DP calibration' if condition['dp'] else 'non-private training'}", flush=True)
     sigmas = [calibrate(condition["epsilon"], config["delta"], q, total_steps) for q in rates] if condition["dp"] else [0.] * 3
     accountants = [RDPAccountant() for _ in clients]
     sampler = [torch.Generator().manual_seed(config["sampler_seed"] + k) for k in range(3)]
@@ -81,12 +82,14 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
                     opt.load_state_dict(state["optimizer"])
                 while state["local_step"] < config["local_steps_per_round"]:
                     guard()  # Latest durable checkpoint already contains the previous logical step.
+                    print(f"[{condition['id']}] round {state['round'] + 1}/{config['rounds']}, "
+                          f"client {k + 1}/3, step {state['local_step'] + 1}/{config['local_steps_per_round']}: starting", flush=True)
                     indices = next(iter(poisson(len(clients[k]), rates[k], sampler[k], 1)))
                     ids = [clients[k][i] for i in indices]
                     chunks = [cache.batch(ids[i:i + config["physical_batch_size"]], device=device)
                               for i in range(0, len(ids), config["physical_batch_size"])]
                     synchronize()
-                    tick = time.monotonic()
+                    tick = time.perf_counter()
                     if condition["dp"]:
                         # FP32 forward/backward for private hooks; no reduced precision DP math.
                         private_step(wrapped, opt, chunks, lambda m, b: loss_vector(m, scheduler, b), accountants[k], rates[k])
@@ -103,7 +106,7 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
                         opt.step()
                         opt.zero_grad()
                     synchronize()
-                    duration = time.monotonic() - tick
+                    duration = time.perf_counter() - tick
                     state["steps"][k] += 1
                     state["local_step"] += 1
                     # Operational timing only; no private losses or sampled counts logged.
@@ -112,6 +115,7 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
                     state["local"] = adapter_state(model)
                     state["optimizer"] = opt.state_dict()
                     save()
+                    print(f"[{condition['id']}] client {k + 1}, step {state['local_step']}: checkpoint saved; {duration:.2f}s compute", flush=True)
                 state["updates"].append(adapter_state(model))
                 state.update(client=k + 1, local_step=0, local=None, optimizer=None)
                 save()
@@ -121,7 +125,7 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
             save()
             if condition["dp"]:
                 atomic_json(folder / "privacy.json", privacy_record(accountants, state["steps"], sigmas, rates, config, condition["epsilon"]))
-            print(f"{condition['id']}: communication round {state['round']}/{config['rounds']}")
+            print(f"{condition['id']}: communication round {state['round']}/{config['rounds']}", flush=True)
         load_adapter(model, state["global"])
         with (folder / "training_history.csv").open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=["round", "client", "step", "seconds"])
@@ -130,7 +134,8 @@ def train(model, scheduler, cache, clients, config, condition, initial, folder, 
         privacy = privacy_record(accountants, state["steps"], sigmas, rates, config, condition["epsilon"]) if condition["dp"] else {"dp": False}
         atomic_json(folder / "privacy.json", privacy)
         durations = [r["seconds"] for r in state["history"] if r["step"] > 1]
-        return {"training_seconds": state["elapsed"], "warmup_adjusted_steps_per_second": len(durations) / sum(durations) if durations else None,
+        measured_seconds = sum(durations)
+        return {"training_seconds": state["elapsed"], "warmup_adjusted_steps_per_second": len(durations) / measured_seconds if measured_seconds > 0 else None,
                 "maximum_gpu_memory_bytes": state["peak_memory_bytes"], "privacy": privacy}
     finally:
         if wrapped is not None:
