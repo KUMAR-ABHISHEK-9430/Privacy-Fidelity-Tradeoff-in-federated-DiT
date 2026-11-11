@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv*/
+data/
+.cache/
+results/
+results_bundle.tar.gz
+*.pt
+*.safetensors
+*.npy
+*.npz
+.env*
+!.env.example
+*token*
+*.log
