@@ -1,5 +1,6 @@
 import copy
 import torch
+import pytest
 from opacus.accountants import RDPAccountant
 from opacus.optimizers import DPOptimizer
 
@@ -87,4 +88,26 @@ def test_actual_diffusers_peft_gradients_against_reference():
     objective(wrapped, x).sum().backward()
     for p, e in zip([p for p in model.parameters() if p.requires_grad], expected):
         torch.testing.assert_close(p.grad_sample, e, rtol=2e-4, atol=1e-6)
+    wrapped.remove_hooks()
+
+
+@pytest.mark.parametrize("physical_batch", [1, 2, 8])
+def test_larger_private_chunks_match_clipping_and_one_noise_draw(physical_batch):
+    torch.manual_seed(81)
+    model = inject(TinyAttention(), 1, 1)
+    x = torch.randn(6, 2, 4) * 10
+    params = [p for p in model.parameters() if p.requires_grad]
+    before = [p.detach().clone() for p in params]
+    expected = reference_clipped(reference_gradients(model, x, loss), .2, 8)
+    sigma = .7
+    oracle_rng = torch.Generator().manual_seed(99)
+    noise = [torch.normal(0., sigma * .2, size=p.shape, generator=oracle_rng) / 8 for p in params]
+    wrapped = wrap(model)
+    opt = DPOptimizer(torch.optim.SGD(params, lr=1.), noise_multiplier=sigma, max_grad_norm=.2,
+                       expected_batch_size=8, generator=torch.Generator().manual_seed(99))
+    acc = RDPAccountant()
+    private_step(wrapped, opt, list(x.split(physical_batch)), loss, acc, .1)
+    for p, old, clipped, gaussian in zip(params, before, expected, noise):
+        torch.testing.assert_close(p, old - clipped - gaussian, rtol=1e-4, atol=1e-6)
+    assert sum(h[2] for h in acc.history) == 1
     wrapped.remove_hooks()
