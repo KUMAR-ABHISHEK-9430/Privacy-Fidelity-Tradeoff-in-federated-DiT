@@ -7,6 +7,9 @@ data/
 .cache/
 results/
 results_bundle.tar.gz
+diagnostics/
+diagnostics_bundle.tar.gz
+reports/
 *.pt
 *.safetensors
 *.npy
