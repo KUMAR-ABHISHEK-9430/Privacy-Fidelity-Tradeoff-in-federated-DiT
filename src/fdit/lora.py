@@ -21,8 +21,8 @@ def inject(model, rank=4, alpha=4):
         raise RuntimeError("Unexpected trainable fraction")
     for p in trainable.values():
         p.data = p.data.float()
-    print(f"Trainable LoRA parameters: {count:,} / {total:,}")
-    print("Adapters:", ", ".join(trainable))
+    print(f"Trainable LoRA parameters: {count:,} / {total:,}", flush=True)
+    print(f"Discovered {len(names)} LoRA projections; first: {names[0]}", flush=True)
     return model
 
 
@@ -32,8 +32,12 @@ def adapter_state(model):
 
 def load_adapter(model, state):
     params = {n: p for n, p in model.named_parameters() if p.requires_grad}
-    if list(params) != list(state) or any(params[n].shape != state[n].shape for n in params):
-        raise ValueError("Adapter keys/order/shapes differ")
+    # Safetensors serializes keys in a different order from named_parameters.
+    # Alignment is by exact name, not dictionary insertion order.
+    if set(params) != set(state) or any(params[n].shape != state[n].shape for n in params):
+        raise ValueError("Adapter keys/shapes differ")
+    if any(not torch.isfinite(state[n]).all() for n in params):
+        raise ValueError("Non-finite adapter weights")
     with torch.no_grad():
         for n, p in params.items():
             p.copy_(state[n])

@@ -12,8 +12,13 @@ def verify_components(model, vae, scheduler):
     if not embeddings or any(m.num_embeddings != 1001 for m in embeddings):
         raise RuntimeError("Cannot verify pretrained unconditional/null ID 1000")
     scale = float(vae.config.scaling_factor)
-    if not math.isfinite(scale) or scale <= 0 or vae.config.latent_channels != c.in_channels:
+    if (not math.isfinite(scale) or scale <= 0 or vae.config.latent_channels != c.in_channels
+            or vae.config.in_channels != 3 or vae.config.out_channels != 3):
         raise RuntimeError("Incompatible VAE scaling/channels")
+    if (getattr(vae.config, "shift_factor", None) not in (None, 0)
+            or getattr(vae.config, "latents_mean", None) is not None
+            or getattr(vae.config, "latents_std", None) is not None):
+        raise RuntimeError("This DiT workflow does not support shifted/standardized VAE latents")
     sc = scheduler.config
     if sc.prediction_type != "epsilon" or sc.num_train_timesteps != 1000:
         raise RuntimeError("Unsupported pretrained scheduler")
@@ -28,8 +33,10 @@ def load_components(config):
     info = model_info(config["model_id"], revision=config["model_revision"])
     revision = info.sha
     kwargs = {"revision": revision}
-    model = DiTTransformer2DModel.from_pretrained(config["model_id"], subfolder="transformer", **kwargs)
-    vae = AutoencoderKL.from_pretrained(config["model_id"], subfolder="vae", **kwargs)
+    print(f"[setup] Loading canonical pretrained DiT .bin weights at {revision}", flush=True)
+    model = DiTTransformer2DModel.from_pretrained(config["model_id"], subfolder="transformer", use_safetensors=False, **kwargs)
+    print("[setup] Loading frozen VAE .bin weights", flush=True)
+    vae = AutoencoderKL.from_pretrained(config["model_id"], subfolder="vae", use_safetensors=False, **kwargs)
     scheduler = DDIMScheduler.from_pretrained(config["model_id"], subfolder="scheduler", **kwargs)
     model.requires_grad_(False)
     vae.requires_grad_(False).eval()
@@ -38,4 +45,5 @@ def load_components(config):
                     original_model_card=info.card_data.to_dict() if info.card_data else {},
                     denoiser_pretraining="ImageNet-1K (not EuroSAT)",
                     model_license="CC BY-NC 4.0", vae_id=config["model_id"] + "/vae")
+    print("[setup] Moving the single DiT and VAE to CUDA", flush=True)
     return model.to("cuda"), vae.to("cuda"), scheduler, metadata

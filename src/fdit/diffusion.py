@@ -19,18 +19,25 @@ def loss_vector(model, scheduler, latents, generator=None):
 
 
 @torch.no_grad()
-def generate(model, vae, scheduler, n, steps, seed, device="cuda", batch_size=4):
+def generate(model, vae, scheduler, n, steps, seed, device=None, batch_size=4,
+             initial_noise=None, guard=lambda: None):
     from diffusers import DDIMScheduler
+    device = next(model.parameters()).device if device is None else torch.device(device)
     scheduler = DDIMScheduler.from_config(scheduler.config)
     scheduler.set_timesteps(steps, device=device)
     rng = torch.Generator(device=device).manual_seed(seed)
+    shape = (n, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+    if initial_noise is not None and tuple(initial_noise.shape) != shape:
+        raise ValueError("Paired initial noise bank has incorrect shape")
     model.eval()
     for start in range(0, n, batch_size):
         size = min(batch_size, n - start)
-        x = torch.randn((size, model.config.in_channels, model.config.sample_size,
-                         model.config.sample_size), generator=rng, device=device)
+        guard()
+        x = (initial_noise[start:start + size].to(device).clone() if initial_noise is not None else
+             torch.randn((size, *shape[1:]), generator=rng, device=device))
         x *= scheduler.init_noise_sigma
         for t in scheduler.timesteps:
+            guard()
             ts = t.expand(size)
             out = model(scheduler.scale_model_input(x, t), timestep=ts,
                         class_labels=torch.full_like(ts, 1000)).sample
